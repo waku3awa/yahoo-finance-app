@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yahoo Finance 株価チャート</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            padding-top: 20px;
+            padding-bottom: 20px;
+        }
+        .chart-container {
+            height: 600px;
+            width: 100%;
+        }
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 400px;
+            font-size: 24px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">Yahoo Finance 株価チャート</h1>
+        
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="form-group">
+                    <label for="symbol">銘柄コード:</label>
+                    <input type="text" class="form-control" id="symbol" placeholder="例: 7203.T (トヨタ自動車)" value="7203.T">
+                    <small class="form-text text-muted">日本株は数字のみでも可 (例: 7203)</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-group">
+                    <label for="interval">足:</label>
+                    <select class="form-control" id="interval">
+                        <!-- APIから動的に取得 -->
+                    </select>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-group">
+                    <label for="period">期間:</label>
+                    <select class="form-control" id="period">
+                        <!-- APIから動的に取得 -->
+                    </select>
+                </div>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button id="fetch-btn" class="btn btn-primary w-100">取得</button>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-12">
+                <div id="loading" class="loading">
+                    <span>データを読み込んでいます...</span>
+                </div>
+                <div id="chart" class="chart-container"></div>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>株価データ</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>日付</th>
+                                        <th>始値</th>
+                                        <th>高値</th>
+                                        <th>安値</th>
+                                        <th>終値</th>
+                                        <th>出来高</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="stock-data">
+                                    <!-- データが入ります -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS and dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初期表示を隠す
+            document.getElementById('loading').style.display = 'flex';
+            document.getElementById('chart').style.display = 'none';
+            
+            // 間隔と期間のオプションを取得
+            fetchIntervals();
+            fetchPeriods();
+            
+            // デフォルトで表示
+            fetchStockData();
+            
+            // 取得ボタンのイベントリスナー
+            document.getElementById('fetch-btn').addEventListener('click', fetchStockData);
+        });
+        
+        // 間隔のオプションを取得
+        function fetchIntervals() {
+            fetch('/api/intervals')
+                .then(response => response.json())
+                .then(data => {
+                    const select = document.getElementById('interval');
+                    select.innerHTML = '';
+                    
+                    data.forEach(interval => {
+                        const option = document.createElement('option');
+                        option.value = interval.value;
+                        option.textContent = interval.label;
+                        
+                        // デフォルトで月足を選択
+                        if (interval.value === '1mo') {
+                            option.selected = true;
+                        }
+                        
+                        select.appendChild(option);
+                    });
+                })
+                .catch(error => console.error('Error fetching intervals:', error));
+        }
+        
+        // 期間のオプションを取得
+        function fetchPeriods() {
+            fetch('/api/periods')
+                .then(response => response.json())
+                .then(data => {
+                    const select = document.getElementById('period');
+                    select.innerHTML = '';
+                    
+                    data.forEach(period => {
+                        const option = document.createElement('option');
+                        option.value = period.value;
+                        option.textContent = period.label;
+                        
+                        // デフォルトで1年を選択
+                        if (period.value === '1y') {
+                            option.selected = true;
+                        }
+                        
+                        select.appendChild(option);
+                    });
+                })
+                .catch(error => console.error('Error fetching periods:', error));
+        }
+        
+        // 株価データを取得してチャートを表示
+        function fetchStockData() {
+            const symbol = document.getElementById('symbol').value;
+            const intervalSelect = document.getElementById('interval');
+            const periodSelect = document.getElementById('period');
+            
+            // セレクトボックスが初期化されていない場合のデフォルト値
+            const interval = intervalSelect.value || '1mo';
+            const period = periodSelect.value || '1y';
+            
+            // ローディング表示
+            document.getElementById('loading').style.display = 'flex';
+            document.getElementById('chart').style.display = 'none';
+            
+            // チャートデータを取得
+            fetch(`/api/plot?symbol=${symbol}&interval=${interval}&period=${period}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('データの取得に失敗しました');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // チャートを表示
+                    Plotly.newPlot('chart', data.data, data.layout);
+                    
+                    // ローディング非表示
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('chart').style.display = 'block';
+                })
+                .catch(error => {
+                    console.error('Error fetching chart data:', error);
+                    document.getElementById('loading').textContent = 'データの取得に失敗しました。銘柄コードを確認してください。';
+                });
+            
+            // 表データを取得
+            fetch(`/api/stock-data?symbol=${symbol}&interval=${interval}&period=${period}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('データの取得に失敗しました');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // テーブルにデータを表示
+                    const tbody = document.getElementById('stock-data');
+                    tbody.innerHTML = '';
+                    
+                    // 日付の降順でソート
+                    data.sort((a, b) => new Date(b.Date) - new Date(a.Date));
+                    
+                    data.forEach(row => {
+                        const tr = document.createElement('tr');
+                        
+                        // 日付をフォーマット
+                        const date = new Date(row.Date);
+                        const formattedDate = date.toLocaleDateString('ja-JP');
+                        
+                        tr.innerHTML = `
+                            <td>${formattedDate}</td>
+                            <td>${row.Open.toLocaleString()}</td>
+                            <td>${row.High.toLocaleString()}</td>
+                            <td>${row.Low.toLocaleString()}</td>
+                            <td>${row.Close.toLocaleString()}</td>
+                            <td>${row.Volume.toLocaleString()}</td>
+                        `;
+                        
+                        tbody.appendChild(tr);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching table data:', error);
+                    document.getElementById('stock-data').innerHTML = '<tr><td colspan="6" class="text-center">データの取得に失敗しました</td></tr>';
+                });
+        }
+    </script>
+</body>
+</html>
